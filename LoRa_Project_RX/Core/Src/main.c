@@ -9,12 +9,12 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "usb_device.h"
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
 #include <sx1262_B_common.h>
 #include <sx126x.h>
 #include <sx126x_hal.h>
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-
+#include <stdarg.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -23,6 +23,8 @@ LoRaConfig LoRa;
 
 uint8_t txdata[10];
 uint8_t rxdata[10];
+uint32_t last_print_time = 0;
+uint32_t last_led_time = 0;
 static volatile bool irq_fired = false;
 static sx126x_pkt_type_t pkt_type ;
 static sx126x_chip_status_t radio_status;
@@ -41,6 +43,8 @@ static sx126x_errors_mask_t errors;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+RTC_HandleTypeDef hrtc;
+
 SPI_HandleTypeDef hspi2;
 
 UART_HandleTypeDef huart1;
@@ -56,6 +60,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -98,9 +103,24 @@ int main(void)
   MX_SPI2_Init();
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
+
+  // Set initial RTC time
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
+
+  sTime.Hours = 20;
+  sTime.Minutes = 22;
+  sTime.Seconds = 0;
+  HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+
+  sDate.Year = 25;  // 2025
+  sDate.Month = 10;
+  sDate.Date = 5;
+  HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
   /****************************LoRa Module Initialization *******************************/
-  printf("Receiver APPLICATION\n\r");
+  printf_ts("AMA ENGINEERING LoRa RECEIVER APPLICATION\n\r");
   init_LoRa_parm();
   sx126x_clear_device_errors(&LoRa);
   sx126x_init(&LoRa);
@@ -120,13 +140,13 @@ int main(void)
   sx126x_get_lora_stats(&LoRa, &stats);
   sx126x_get_device_errors(&LoRa, &errors);
 
-  printf("Error mask: 0x%04X\n\r", errors);
+  printf_ts("Error mask: 0x%04X\n\r", errors);
 
   HAL_Delay(2000);
 
-  printf("Starting RX mode...\n\r");
+  printf_ts("Starting RX mode...\n\r");
   sx126x_set_rx(&LoRa, 0);  // Enter continuous receive mode
-  printf("Ready to receive\n\r");
+  printf_ts("Ready to receive\n\r");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -137,8 +157,21 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  apps_common_sx126x_irq_process(&LoRa);
-	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-	  HAL_Delay(250);
+	  uint32_t current_time = HAL_GetTick();
+
+	     // Print every 4000ms (4 seconds)
+	     if(current_time - last_print_time >= 4000)
+	     {
+	         printf_ts("LoRa APPLICATION RUNNING...\n\r");
+	         last_print_time = current_time;
+	     }
+
+	     // Toggle LED every 250ms
+	     if(current_time - last_led_time >= 250)
+	     {
+	         HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+	         last_led_time = current_time;
+	     }
   }
   /* USER CODE END 3 */
 }
@@ -156,9 +189,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_LSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
@@ -181,12 +215,71 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_USB;
+  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
   PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLL;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef DateToUpdate = {0};
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+
+  /** Initialize RTC Only
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.AsynchPrediv = RTC_AUTO_1_SECOND;
+  hrtc.Init.OutPut = RTC_OUTPUTSOURCE_ALARM;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* USER CODE BEGIN Check_RTC_BKUP */
+
+  /* USER CODE END Check_RTC_BKUP */
+
+  /** Initialize RTC and set the Time and Date
+  */
+  sTime.Hours = 0x20;
+  sTime.Minutes = 0x15;
+  sTime.Seconds = 0x0;
+
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  DateToUpdate.WeekDay = RTC_WEEKDAY_SUNDAY;
+  DateToUpdate.Month = RTC_MONTH_OCTOBER;
+  DateToUpdate.Date = 0x5;
+  DateToUpdate.Year = 0x25;
+
+  if (HAL_RTC_SetDate(&hrtc, &DateToUpdate, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
+
 }
 
 /**
@@ -373,6 +466,25 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void printf_ts(const char* format, ...)
+{
+    RTC_TimeTypeDef sTime;
+    RTC_DateTypeDef sDate;
+
+    HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+    HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+
+    printf("SYS: 20%02d-%02d-%02d - %02d:%02d:%02d  ",
+           sDate.Year, sDate.Month, sDate.Date,
+           sTime.Hours, sTime.Minutes, sTime.Seconds);
+
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+}
+
 void init_LoRa_parm(void)
 {
 	txdata[0] = 'M';
@@ -418,13 +530,13 @@ void apps_common_sx126x_irq_process( const void* context )
 
         if( ( irq_regs & SX126X_IRQ_TX_DONE ) == SX126X_IRQ_TX_DONE )
         {
-            printf( "Tx done\n\r" );
+        	printf_ts( "Tx done\n\r" );
             //on_tx_done( );
         }
 
         if( ( irq_regs & SX126X_IRQ_RX_DONE ) == SX126X_IRQ_RX_DONE )
         {
-        	printf( "Rx done\n\r" );
+        	printf_ts( "Rx done\n\r" );
             sx126x_handle_rx_done( context );
             on_rx_done( );
 
@@ -432,58 +544,58 @@ void apps_common_sx126x_irq_process( const void* context )
 
         if( ( irq_regs & SX126X_IRQ_PREAMBLE_DETECTED ) == SX126X_IRQ_PREAMBLE_DETECTED )
         {
-        	printf( "Preamble detected\n\r" );
+        	printf_ts( "Preamble detected\n\r" );
             //on_preamble_detected( );
         }
 
         if( ( irq_regs & SX126X_IRQ_SYNC_WORD_VALID ) == SX126X_IRQ_SYNC_WORD_VALID )
         {
-        	printf( "Syncword valid\n\r" );
+        	printf_ts( "Syncword valid\n\r" );
             //on_syncword_valid( );
         }
 
         if( ( irq_regs & SX126X_IRQ_HEADER_VALID ) == SX126X_IRQ_HEADER_VALID )
         {
-        	printf( "Header valid\n\r" );
+        	printf_ts( "Header valid\n\r" );
             //on_header_valid( );
         }
 
         if( ( irq_regs & SX126X_IRQ_HEADER_ERROR ) == SX126X_IRQ_HEADER_ERROR )
         {
-        	printf( "Header error\n\r" );
+        	printf_ts( "Header error\n\r" );
             //on_header_error( );
         }
 
         if( ( irq_regs & SX126X_IRQ_CRC_ERROR ) == SX126X_IRQ_CRC_ERROR )
         {
-        	printf( "CRC error\n\r" );
+        	printf_ts( "CRC error\n\r" );
             //on_crc_error( );
         }
 
         if( ( irq_regs & SX126X_IRQ_CAD_DONE ) == SX126X_IRQ_CAD_DONE )
         {
-        	printf( "CAD done\n\r" );
+        	printf_ts( "CAD done\n\r" );
             if( ( irq_regs & SX126X_IRQ_CAD_DETECTED ) == SX126X_IRQ_CAD_DETECTED )
             {
-            	printf( "Channel activity detected\n\r" );
+            	printf_ts( "Channel activity detected\n\r" );
                 //on_cad_done_detected( );
             }
             else
             {
-            	printf( "No channel activity detected\n\r" );
+            	printf_ts( "No channel activity detected\n\r" );
                 //on_cad_done_undetected( );
             }
         }
 
         if( ( irq_regs & SX126X_IRQ_TIMEOUT ) == SX126X_IRQ_TIMEOUT )
         {
-        	printf( "Rx timeout\n\r" );
+        	printf_ts( "Rx timeout\n\r" );
             //on_rx_timeout( );
         }
 
         if( ( irq_regs & SX126X_IRQ_LR_FHSS_HOP ) == SX126X_IRQ_LR_FHSS_HOP )
         {
-        	printf( "FHSS hop done\n\r" );
+        	printf_ts( "FHSS hop done\n\r" );
             //on_fhss_hop_done( );
         }
     }
@@ -491,13 +603,11 @@ void apps_common_sx126x_irq_process( const void* context )
 void on_rx_done(void)
 {
     sx126x_rx_buffer_status_t rx_buffer_status;
-    sx126x_pkt_status_lora_t pkt_status;  // Add this
+    sx126x_pkt_status_lora_t pkt_status;
     char received[17];
-    uint8_t raw_buffer[17];  // Fixed: was pointer array, should be uint8_t array
+    uint8_t raw_buffer[17];
 
-    // Get packet status for RSSI and SNR
     sx126x_get_lora_pkt_status(&LoRa, &pkt_status);
-
     sx126x_get_rx_buffer_status(&LoRa, &rx_buffer_status);
 
     uint8_t bytes_to_read = rx_buffer_status.pld_len_in_bytes;
@@ -505,23 +615,26 @@ void on_rx_done(void)
 
     sx126x_read_buffer(&LoRa, 0, raw_buffer, bytes_to_read);
 
-    // First byte is the actual length
     uint8_t actual_len = raw_buffer[0];
     if(actual_len > 15) actual_len = 15;
 
     memcpy(received, raw_buffer + 1, actual_len);
     received[actual_len] = '\0';
 
-    printf("RX: %d bytes (actual: %d)\n\r", bytes_to_read, actual_len);
-    printf("Received: %s\n\r", received);
 
-    // Display RSSI and SNR
-    printf("RSSI: %d dBm\n\r", pkt_status.rssi_pkt_in_dbm);
-    printf("SNR: %d dB\n\r", pkt_status.snr_pkt_in_db);
-    printf("Signal RSSI: %d dBm\n\r", pkt_status.signal_rssi_pkt_in_dbm);
-    printf("-------------------\n\r");
+    printf_ts("RX: %d bytes (actual: %d)\n\r", bytes_to_read, actual_len);
 
-    sx126x_set_rx(&LoRa, 0);
+        printf_ts("Received: %s\n\r", received);
+
+        printf_ts("RSSI: %d dBm\n\r", pkt_status.rssi_pkt_in_dbm);
+
+        printf_ts("SNR: %d dB\n\r", pkt_status.snr_pkt_in_db);
+
+        printf_ts("Signal RSSI: %d dBm\n\r", pkt_status.signal_rssi_pkt_in_dbm);
+
+        printf_ts("-------------------\n\r");
+
+        sx126x_set_rx(&LoRa, 0);
 }
 
 
