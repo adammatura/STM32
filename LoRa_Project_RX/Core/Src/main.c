@@ -9,7 +9,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "usb_device.h"
-#include <stdio.h>
 #include <sx1262_B_common.h>
 #include <sx126x.h>
 #include <sx126x_hal.h>
@@ -492,8 +491,12 @@ void apps_common_sx126x_irq_process( const void* context )
 void on_rx_done(void)
 {
     sx126x_rx_buffer_status_t rx_buffer_status;
+    sx126x_pkt_status_lora_t pkt_status;  // Add this
     char received[17];
-    uint8_t raw_buffer[17];
+    uint8_t raw_buffer[17];  // Fixed: was pointer array, should be uint8_t array
+
+    // Get packet status for RSSI and SNR
+    sx126x_get_lora_pkt_status(&LoRa, &pkt_status);
 
     sx126x_get_rx_buffer_status(&LoRa, &rx_buffer_status);
 
@@ -511,6 +514,12 @@ void on_rx_done(void)
 
     printf("RX: %d bytes (actual: %d)\n\r", bytes_to_read, actual_len);
     printf("Received: %s\n\r", received);
+
+    // Display RSSI and SNR
+    printf("RSSI: %d dBm\n\r", pkt_status.rssi_pkt_in_dbm);
+    printf("SNR: %d dB\n\r", pkt_status.snr_pkt_in_db);
+    printf("Signal RSSI: %d dBm\n\r", pkt_status.signal_rssi_pkt_in_dbm);
+    printf("-------------------\n\r");
 
     sx126x_set_rx(&LoRa, 0);
 }

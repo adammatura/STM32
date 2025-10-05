@@ -31,7 +31,7 @@ C_DEPS += \
 
 # Each subdirectory must supply rules for building sources it contributes
 Lora/Src/%.o Lora/Src/%.su Lora/Src/%.cyclo: ../Lora/Src/%.c Lora/Src/subdir.mk
-	arm-none-eabi-gcc "$<" -mcpu=cortex-m0plus -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32G070xx -c -I../Core/Inc -I../Drivers/STM32G0xx_HAL_Driver/Inc -I../Drivers/STM32G0xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32G0xx/Include -I../Drivers/CMSIS/Include -I"C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/LoRa_Project_TX/Lora/Inc" -I"C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/LoRa_Project_TX/Lora/Src" -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" --specs=nano.specs -mfloat-abi=soft -mthumb -o "$@"
+	arm-none-eabi-gcc "$<" -mcpu=cortex-m0plus -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32G070xx -c -I../Core/Inc -I../Drivers/STM32G0xx_HAL_Driver/Inc -I../Drivers/STM32G0xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32G0xx/Include -I../Drivers/CMSIS/Include -I"C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/LoRa_Project_TX/Lora/Inc" -I"C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/LoRa_Project_TX/Lora/Src" -I"C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/GIT/LoRa_Project_TX/Lora/Src" -I"C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/GIT/LoRa_Project_TX/Lora/Inc" -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" --specs=nano.specs -mfloat-abi=soft -mthumb -o "$@"
 
 clean: clean-Lora-2f-Src
 

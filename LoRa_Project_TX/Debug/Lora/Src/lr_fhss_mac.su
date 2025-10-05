@@ -1,4 +1,4 @@
-C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/LoRa_Project_TX/Lora/Inc/lr_fhss_mac.h:196:24:lr_fhss_get_time_on_air_numerator	32	static
+C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/GIT/LoRa_Project_TX/Lora/Inc/lr_fhss_mac.h:196:24:lr_fhss_get_time_on_air_numerator	32	static
 ../Lora/Src/lr_fhss_mac.c:317:14:lr_fhss_get_hop_sequence_count	16	static
 ../Lora/Src/lr_fhss_mac.c:327:6:lr_fhss_process_parameters	24	static
 ../Lora/Src/lr_fhss_mac.c:338:18:lr_fhss_get_hop_params	32	static

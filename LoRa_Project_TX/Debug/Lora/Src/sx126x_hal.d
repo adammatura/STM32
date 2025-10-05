@@ -1,5 +1,5 @@
 Lora/Src/sx126x_hal.o: ../Lora/Src/sx126x_hal.c \
- C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/LoRa_Project_TX/Lora/Inc/sx126x_hal.h \
+ C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/GIT/LoRa_Project_TX/Lora/Inc/sx126x_hal.h \
  ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal.h \
  ../Core/Inc/stm32g0xx_hal_conf.h \
  ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal_rcc.h \
@@ -31,7 +31,7 @@ Lora/Src/sx126x_hal.o: ../Lora/Src/sx126x_hal.c \
  ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal_spi_ex.h \
  ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal_uart.h \
  ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal_uart_ex.h
-C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/LoRa_Project_TX/Lora/Inc/sx126x_hal.h:
+C:/Users/adamm/STM32CubeIDE/workspace_1.14.1/GIT/LoRa_Project_TX/Lora/Inc/sx126x_hal.h:
 ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal.h:
 ../Core/Inc/stm32g0xx_hal_conf.h:
 ../Drivers/STM32G0xx_HAL_Driver/Inc/stm32g0xx_hal_rcc.h:
