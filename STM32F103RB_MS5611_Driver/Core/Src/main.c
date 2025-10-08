@@ -26,6 +26,7 @@
 /* USER CODE BEGIN Includes */
 #include "ms5611.h"
 #include "usbd_cdc_if.h"
+#include "bmi088.h"
 #include <stdio.h>
 #include <string.h>
 /* USER CODE END Includes */
@@ -50,10 +51,13 @@
 /* USER CODE BEGIN PV */
 extern SPI_HandleTypeDef hspi2;
 MS5611_Handle_t ms5611;
-
+BMI088_Handle_t bmi088;
 // Global variables for Live Expressions / Data Trace
 volatile float sensor_pressure = 0.0f;
 volatile float sensor_temperature = 0.0f;
+volatile float accel_x = 0.0f, accel_y = 0.0f, accel_z = 0.0f;
+volatile float gyro_x = 0.0f, gyro_y = 0.0f, gyro_z = 0.0f;
+volatile float imu_temperature = 0.0f;
 
 /* USER CODE END PV */
 
@@ -101,23 +105,70 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_Delay(2000);
 
-      /* Initialize MS5611 sensor */
-      if (!MS5611_Init(&ms5611, &hspi2, GPIOC, GPIO_PIN_8, MS5611_OSR_4096)) {
-          char error_msg[] = "MS5611 Initialization Failed!\r\n";
-          CDC_Transmit_FS((uint8_t*)error_msg, strlen(error_msg));
+  char buffer[200];
+  int len;
 
-          // Blink LED rapidly to indicate error
-          while (1) {
-              HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_0);
-              HAL_Delay(100);
-          }
+  /* Initialize MS5611 Barometer */
+  len = sprintf(buffer, "\r\n=== Sensor Initialization ===\r\n");
+  CDC_Transmit_FS((uint8_t*)buffer, len);
+  HAL_Delay(200);
+
+  len = sprintf(buffer, "Step 1: Init MS5611...\r\n");
+  CDC_Transmit_FS((uint8_t*)buffer, len);
+  HAL_Delay(200);
+
+  if (!MS5611_Init(&ms5611, &hspi2, GPIOC, GPIO_PIN_8, MS5611_OSR_4096)) {
+      len = sprintf(buffer, "MS5611: FAILED!\r\n");
+      CDC_Transmit_FS((uint8_t*)buffer, len);
+      HAL_Delay(200);
+
+      // Rapid blink = MS5611 error (100ms)
+      while (1) {
+          HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_0);
+          HAL_Delay(100);
       }
+  }
+  len = sprintf(buffer, "Step 2: MS5611 OK!\r\n");
+  CDC_Transmit_FS((uint8_t*)buffer, len);
+  HAL_Delay(200);
 
-      char success_msg[] = "MS5611 Initialized Successfully!\r\n";
-      CDC_Transmit_FS((uint8_t*)success_msg, strlen(success_msg));
+  len = sprintf(buffer, "Step 3: Checking BMI088 CS pins...\r\n");
+  CDC_Transmit_FS((uint8_t*)buffer, len);
+  HAL_Delay(200);
 
-      char buffer[100];
-      uint32_t last_led_toggle = 0;
+  // Test CS pins are working
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);
+  HAL_Delay(10);
+
+  len = sprintf(buffer, "Step 4: Init BMI088...\r\n");
+  CDC_Transmit_FS((uint8_t*)buffer, len);
+  HAL_Delay(200);
+
+  if (!BMI088_Init(&bmi088, &hspi2,
+                   GPIOC, GPIO_PIN_7,   // Accel CS
+                   GPIOB, GPIO_PIN_12)) { // Gyro CS
+      len = sprintf(buffer, "BMI088: FAILED!\r\n");
+      CDC_Transmit_FS((uint8_t*)buffer, len);
+      HAL_Delay(200);
+
+      // Medium blink = BMI088 error (200ms)
+      while (1) {
+          HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_0);
+          HAL_Delay(200);
+      }
+  }
+  len = sprintf(buffer, "Step 5: BMI088 OK!\r\n");
+  CDC_Transmit_FS((uint8_t*)buffer, len);
+  HAL_Delay(200);
+
+  len = sprintf(buffer, "\r\n=== All Sensors Ready ===\r\n\r\n");
+  CDC_Transmit_FS((uint8_t*)buffer, len);
+  HAL_Delay(200);
+
+  uint32_t last_led_toggle = 0;
+  uint32_t last_sensor_read = 0;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -125,42 +176,85 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  float pressure, temperature;
+	    // Read all sensors every 200ms
+	    if (HAL_GetTick() - last_sensor_read >= 200) {
+	        last_sensor_read = HAL_GetTick();
 
-	      // Read sensor data
-	      if (MS5611_ReadSensor(&ms5611, &pressure, &temperature)) {
+	        // Read MS5611
+	        float pressure, temperature;
+	        if (MS5611_ReadSensor(&ms5611, &pressure, &temperature)) {
+	            sensor_pressure = pressure;
+	            sensor_temperature = temperature;
+	        }
 
-	    	  // Update global variables for monitoring
-	    	  sensor_pressure = pressure;
-	    	  sensor_temperature = temperature;
+	        // Read BMI088 Accelerometer
+	        BMI088_AccelData_t accel;
+	        if (BMI088_ReadAccel(&bmi088, &accel)) {
+	            accel_x = accel.x;
+	            accel_y = accel.y;
+	            accel_z = accel.z;
+	        }
 
-	          // Convert float to integer parts (to avoid float printf)
-	          int p_int = (int)pressure;
-	          int p_frac = (int)((pressure - p_int) * 100);
-	          int t_int = (int)temperature;
-	          int t_frac = (int)((temperature - t_int) * 100);
+	        // Read BMI088 Gyroscope
+	        BMI088_GyroData_t gyro;
+	        if (BMI088_ReadGyro(&bmi088, &gyro)) {
+	            gyro_x = gyro.x;
+	            gyro_y = gyro.y;
+	            gyro_z = gyro.z;
+	        }
 
-	          // Handle negative temperatures correctly
-	          if (temperature < 0 && t_frac != 0) {
-	              t_frac = -t_frac;
-	          }
+	        // Format and send data
+	        int p_int = (int)sensor_pressure;
+	        int p_frac = (int)((sensor_pressure - p_int) * 100);
+	        int t_int = (int)sensor_temperature;
+	        int t_frac = (int)((sensor_temperature - t_int) * 100);
+	        if (sensor_temperature < 0 && t_frac != 0) t_frac = -t_frac;
 
-	          // Format and send data via USB VCP
-	          int len = sprintf(buffer, "Pressure: %d.%02d mbar, Temperature: %d.%02d C\r\n",
-	                          p_int, p_frac, t_int, t_frac);
-	          CDC_Transmit_FS((uint8_t*)buffer, len);
-	      } else {
-	          char error_msg[] = "Sensor Read Error!\r\n";
-	          CDC_Transmit_FS((uint8_t*)error_msg, strlen(error_msg));
-	      }
+	        len = sprintf(buffer, "P:%d.%02d mbar T:%d.%02d C | ",
+	                     p_int, p_frac, t_int, t_frac);
 
-	      // Toggle LED every second
-	      if (HAL_GetTick() - last_led_toggle >= 1000) {
-	          HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_0);
-	          last_led_toggle = HAL_GetTick();
-	      }
+	        // Accelerometer
+	        int ax_int = (int)accel_x;
+	        int ax_frac = (int)((accel_x - ax_int) * 100);
+	        if (accel_x < 0 && ax_frac != 0) ax_frac = -ax_frac;
 
-	      HAL_Delay(500);  // Read sensor every 500ms
+	        int ay_int = (int)accel_y;
+	        int ay_frac = (int)((accel_y - ay_int) * 100);
+	        if (accel_y < 0 && ay_frac != 0) ay_frac = -ay_frac;
+
+	        int az_int = (int)accel_z;
+	        int az_frac = (int)((accel_z - az_int) * 100);
+	        if (accel_z < 0 && az_frac != 0) az_frac = -az_frac;
+
+	        len += sprintf(buffer + len, "A:[%d.%02d,%d.%02d,%d.%02d]g | ",
+	                      ax_int, ax_frac, ay_int, ay_frac, az_int, az_frac);
+
+	        // Gyroscope
+	        int gx_int = (int)gyro_x;
+	        int gx_frac = (int)((gyro_x - gx_int) * 100);
+	        if (gyro_x < 0 && gx_frac != 0) gx_frac = -gx_frac;
+
+	        int gy_int = (int)gyro_y;
+	        int gy_frac = (int)((gyro_y - gy_int) * 100);
+	        if (gyro_y < 0 && gy_frac != 0) gy_frac = -gy_frac;
+
+	        int gz_int = (int)gyro_z;
+	        int gz_frac = (int)((gyro_z - gz_int) * 100);
+	        if (gyro_z < 0 && gz_frac != 0) gz_frac = -gz_frac;
+
+	        len += sprintf(buffer + len, "G:[%d.%02d,%d.%02d,%d.%02d]dps\r\n",
+	                      gx_int, gx_frac, gy_int, gy_frac, gz_int, gz_frac);
+
+	        CDC_Transmit_FS((uint8_t*)buffer, len);
+	    }
+
+	    // Toggle LED every second
+	    if (HAL_GetTick() - last_led_toggle >= 1000) {
+	        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_0);
+	        last_led_toggle = HAL_GetTick();
+	    }
+
+	    HAL_Delay(10);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */

@@ -59,6 +59,10 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define STATUS_LED_Pin GPIO_PIN_0
 #define STATUS_LED_GPIO_Port GPIOC
+#define BMI088_Gyro_CS_Pin GPIO_PIN_12
+#define BMI088_Gyro_CS_GPIO_Port GPIOB
+#define BMI088_Accel_CS_Pin GPIO_PIN_7
+#define BMI088_Accel_CS_GPIO_Port GPIOC
 #define CSB_PRESS_Pin GPIO_PIN_8
 #define CSB_PRESS_GPIO_Port GPIOC
 
