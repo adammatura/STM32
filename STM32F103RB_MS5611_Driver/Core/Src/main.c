@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "spi.h"
+#include "usart.h"
 #include "usb_device.h"
 #include "gpio.h"
 
@@ -27,6 +28,7 @@
 #include "ms5611.h"
 #include "usbd_cdc_if.h"
 #include "bmi088.h"
+#include "ublox_m8c.h"
 #include <stdio.h>
 #include <string.h>
 /* USER CODE END Includes */
@@ -50,14 +52,21 @@
 
 /* USER CODE BEGIN PV */
 extern SPI_HandleTypeDef hspi2;
+extern UART_HandleTypeDef huart2;
+
 MS5611_Handle_t ms5611;
 BMI088_Handle_t bmi088;
+UBLOX_M8C_Handle_t gps;
 // Global variables for Live Expressions / Data Trace
 volatile float sensor_pressure = 0.0f;
 volatile float sensor_temperature = 0.0f;
 volatile float accel_x = 0.0f, accel_y = 0.0f, accel_z = 0.0f;
 volatile float gyro_x = 0.0f, gyro_y = 0.0f, gyro_z = 0.0f;
 volatile float imu_temperature = 0.0f;
+volatile float gps_latitude = 0.0f;
+volatile float gps_longitude = 0.0f;
+volatile float gps_altitude = 0.0f;
+volatile uint8_t gps_satellites = 0;
 
 /* USER CODE END PV */
 
@@ -102,6 +111,7 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI2_Init();
   MX_USB_DEVICE_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   HAL_Delay(2000);
 
@@ -166,8 +176,24 @@ int main(void)
   CDC_Transmit_FS((uint8_t*)buffer, len);
   HAL_Delay(200);
 
+  /* Initialize UBLOX M8C GPS */
+  len = sprintf(buffer, "Step 6: Init UBLOX M8C GPS...\r\n");
+  CDC_Transmit_FS((uint8_t*)buffer, len);
+  HAL_Delay(200);
+
+  UBLOX_M8C_Init(&gps, &huart2);
+
+  len = sprintf(buffer, "Step 7: UBLOX M8C OK! Waiting for satellites...\r\n");
+  CDC_Transmit_FS((uint8_t*)buffer, len);
+  HAL_Delay(200);
+
+  len = sprintf(buffer, "\r\n=== All Sensors Ready ===\r\n\r\n");
+  CDC_Transmit_FS((uint8_t*)buffer, len);
+  HAL_Delay(200);
+
   uint32_t last_led_toggle = 0;
   uint32_t last_sensor_read = 0;
+  uint32_t last_gps_update = 0;
 
   /* USER CODE END 2 */
 
@@ -175,87 +201,116 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
-	    // Read all sensors every 200ms
-	    if (HAL_GetTick() - last_sensor_read >= 200) {
-	        last_sensor_read = HAL_GetTick();
+      // Process GPS data if new NMEA sentence received
+      if (UBLOX_M8C_HasNewData(&gps)) {
+          if (UBLOX_M8C_ParseNMEA(&gps)) {
+              GPS_Data_t gps_data;
+              UBLOX_M8C_GetData(&gps, &gps_data);
 
-	        // Read MS5611
-	        float pressure, temperature;
-	        if (MS5611_ReadSensor(&ms5611, &pressure, &temperature)) {
-	            sensor_pressure = pressure;
-	            sensor_temperature = temperature;
-	        }
+              gps_latitude = gps_data.latitude;
+              gps_longitude = gps_data.longitude;
+              gps_altitude = gps_data.altitude;
+              gps_satellites = gps_data.satellites;
 
-	        // Read BMI088 Accelerometer
-	        BMI088_AccelData_t accel;
-	        if (BMI088_ReadAccel(&bmi088, &accel)) {
-	            accel_x = accel.x;
-	            accel_y = accel.y;
-	            accel_z = accel.z;
-	        }
+              last_gps_update = HAL_GetTick();
+          }
 
-	        // Read BMI088 Gyroscope
-	        BMI088_GyroData_t gyro;
-	        if (BMI088_ReadGyro(&bmi088, &gyro)) {
-	            gyro_x = gyro.x;
-	            gyro_y = gyro.y;
-	            gyro_z = gyro.z;
-	        }
+          // Also send raw NMEA sentence
+          const char *nmea = UBLOX_M8C_GetLastSentence(&gps);
+          if (nmea[0] == '$') {
+              len = sprintf(buffer, "NMEA: %s", nmea);
+              CDC_Transmit_FS((uint8_t*)buffer, len);
+          }
+      }
 
-	        // Format and send data
-	        int p_int = (int)sensor_pressure;
-	        int p_frac = (int)((sensor_pressure - p_int) * 100);
-	        int t_int = (int)sensor_temperature;
-	        int t_frac = (int)((sensor_temperature - t_int) * 100);
-	        if (sensor_temperature < 0 && t_frac != 0) t_frac = -t_frac;
+      // Read all sensors every 500ms
+      if (HAL_GetTick() - last_sensor_read >= 500) {
+          last_sensor_read = HAL_GetTick();
 
-	        len = sprintf(buffer, "P:%d.%02d mbar T:%d.%02d C | ",
-	                     p_int, p_frac, t_int, t_frac);
+          // Read MS5611
+          float pressure, temperature;
+          if (MS5611_ReadSensor(&ms5611, &pressure, &temperature)) {
+              sensor_pressure = pressure;
+              sensor_temperature = temperature;
+          }
 
-	        // Accelerometer
-	        int ax_int = (int)accel_x;
-	        int ax_frac = (int)((accel_x - ax_int) * 100);
-	        if (accel_x < 0 && ax_frac != 0) ax_frac = -ax_frac;
+          // Read BMI088 Accelerometer
+          BMI088_AccelData_t accel;
+          if (BMI088_ReadAccel(&bmi088, &accel)) {
+              accel_x = accel.x;
+              accel_y = accel.y;
+              accel_z = accel.z;
+          }
 
-	        int ay_int = (int)accel_y;
-	        int ay_frac = (int)((accel_y - ay_int) * 100);
-	        if (accel_y < 0 && ay_frac != 0) ay_frac = -ay_frac;
+          // Read BMI088 Gyroscope
+          BMI088_GyroData_t gyro;
+          if (BMI088_ReadGyro(&bmi088, &gyro)) {
+              gyro_x = gyro.x;
+              gyro_y = gyro.y;
+              gyro_z = gyro.z;
+          }
 
-	        int az_int = (int)accel_z;
-	        int az_frac = (int)((accel_z - az_int) * 100);
-	        if (accel_z < 0 && az_frac != 0) az_frac = -az_frac;
+          // Format and send data
+          int p_int = (int)sensor_pressure;
+          int p_frac = (int)((sensor_pressure - p_int) * 100);
+          int t_int = (int)sensor_temperature;
+          int t_frac = (int)((sensor_temperature - t_int) * 100);
+          if (sensor_temperature < 0 && t_frac != 0) t_frac = -t_frac;
 
-	        len += sprintf(buffer + len, "A:[%d.%02d,%d.%02d,%d.%02d]g | ",
-	                      ax_int, ax_frac, ay_int, ay_frac, az_int, az_frac);
+          len = sprintf(buffer, "SENS: P:%d.%02d mbar T:%d.%02d C | ",
+                       p_int, p_frac, t_int, t_frac);
 
-	        // Gyroscope
-	        int gx_int = (int)gyro_x;
-	        int gx_frac = (int)((gyro_x - gx_int) * 100);
-	        if (gyro_x < 0 && gx_frac != 0) gx_frac = -gx_frac;
+          // Accelerometer
+          int ax_int = (int)accel_x;
+          int ax_frac = (int)((accel_x - ax_int) * 100);
+          if (accel_x < 0 && ax_frac != 0) ax_frac = -ax_frac;
 
-	        int gy_int = (int)gyro_y;
-	        int gy_frac = (int)((gyro_y - gy_int) * 100);
-	        if (gyro_y < 0 && gy_frac != 0) gy_frac = -gy_frac;
+          int ay_int = (int)accel_y;
+          int ay_frac = (int)((accel_y - ay_int) * 100);
+          if (accel_y < 0 && ay_frac != 0) ay_frac = -ay_frac;
 
-	        int gz_int = (int)gyro_z;
-	        int gz_frac = (int)((gyro_z - gz_int) * 100);
-	        if (gyro_z < 0 && gz_frac != 0) gz_frac = -gz_frac;
+          int az_int = (int)accel_z;
+          int az_frac = (int)((accel_z - az_int) * 100);
+          if (accel_z < 0 && az_frac != 0) az_frac = -az_frac;
 
-	        len += sprintf(buffer + len, "G:[%d.%02d,%d.%02d,%d.%02d]dps\r\n",
-	                      gx_int, gx_frac, gy_int, gy_frac, gz_int, gz_frac);
+          len += sprintf(buffer + len, "A:[%d.%02d,%d.%02d,%d.%02d]g | ",
+                        ax_int, ax_frac, ay_int, ay_frac, az_int, az_frac);
 
-	        CDC_Transmit_FS((uint8_t*)buffer, len);
-	    }
+          // Gyroscope
+          int gx_int = (int)gyro_x;
+          int gx_frac = (int)((gyro_x - gx_int) * 100);
+          if (gyro_x < 0 && gx_frac != 0) gx_frac = -gx_frac;
 
-	    // Toggle LED every second
-	    if (HAL_GetTick() - last_led_toggle >= 1000) {
-	        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_0);
-	        last_led_toggle = HAL_GetTick();
-	    }
+          int gy_int = (int)gyro_y;
+          int gy_frac = (int)((gyro_y - gy_int) * 100);
+          if (gyro_y < 0 && gy_frac != 0) gy_frac = -gy_frac;
 
-	    HAL_Delay(10);
-    /* USER CODE BEGIN 3 */
+          int gz_int = (int)gyro_z;
+          int gz_frac = (int)((gyro_z - gz_int) * 100);
+          if (gyro_z < 0 && gz_frac != 0) gz_frac = -gz_frac;
+
+          len += sprintf(buffer + len, "G:[%d.%02d,%d.%02d,%d.%02d]dps",
+                        gx_int, gx_frac, gy_int, gy_frac, gz_int, gz_frac);
+
+          // Add GPS summary
+          if (gps_satellites > 0) {
+              len += sprintf(buffer + len, " | GPS:SAT=%d", gps_satellites);
+          } else {
+              len += sprintf(buffer + len, " | GPS:No Fix");
+          }
+
+          len += sprintf(buffer + len, "\r\n");
+          CDC_Transmit_FS((uint8_t*)buffer, len);
+      }
+
+      // Toggle LED every second
+      if (HAL_GetTick() - last_led_toggle >= 1000) {
+          HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_0);
+          last_led_toggle = HAL_GetTick();
+      }
+
+      HAL_Delay(10);
+      /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
@@ -311,7 +366,15 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART2) {
+        // Process received byte
+        UBLOX_M8C_ProcessByte(&gps, gps.rx_buffer[0]);
 
+        // Continue receiving
+        HAL_UART_Receive_IT(&huart2, gps.rx_buffer, 1);
+    }
+}
 /* USER CODE END 4 */
 
 /**
